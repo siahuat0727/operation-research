@@ -26,12 +26,8 @@ course,day,start,end,happiness,front=multidict({
 		('japan4234A'):[2,3,4,3,'A1'],
 		('japan4278A'):[2,7,8,4,'A1'],
 		('japan4356B'):[5,2,4,5,'A1'],
+		('tongshi278'):[2,7,8,5,'A9'],
 		})
-
-# create lists for different type of courses
-A1 = [c for c in course if front[c] == 'A1']
-A9 = [c for c in course if front[c] == 'A9']
-notA1A9 = [c for c in course if front[c] != 'A1' and front[c] != 'A9']
 
 # total period of one day
 one_t = 12
@@ -40,6 +36,20 @@ total_t = 5 * one_t
 for c in course:
 	start[c] = (day[c]-1) * one_t + start[c]
 	end[c] = (day[c]-1) * one_t + end[c]
+
+# create lists for different type of courses
+A1 = [c for c in course if front[c] == 'A1']
+A9 = [c for c in course if front[c] == 'A9']
+notA1A9 = [c for c in course if front[c] != 'A1' and front[c] != 'A9']
+collide = [[],[]]
+for cA1 in A1:
+	collideA9 = []
+	for cA9 in A9:
+		if start[cA1] >= end[cA9] or end[cA1] <= start[cA9] == False: # TODO check youXianQuan
+			collideA9.append(cA9)
+	if collideA9: # if len(collideA9) > 0
+		collide[0].append(cA1)
+		collide[1].append(collideA9)
 
 m = Model("course_schedule")
 
@@ -55,6 +65,11 @@ prob_A1 = [p_A1 * ((1-p_A1)**i) for i in range(len(A1))]
 p_A9 = 0.5
 prob_A9 = [p_A9 * ((1-p_A9)**i) for i in range(len(A9))]
 
+# for cA1 in collide[0]:
+# 	for cA9s in collide[1]:
+# 		for cA9 in cA9s:
+# 			for i in 
+
 m.setObjective(
 		# calculate happiness of required and elective courses
 		quicksum(happiness[c] * choose_notA1A9[c] for c in notA1A9)
@@ -62,6 +77,8 @@ m.setObjective(
 	   	+ quicksum(prob_A1[i] * choose_A1[c, i] * happiness[c] for c in A1 for i in range(len(A1)) if all(start[c] >= end[cc] or end[c] <= start[cc] for cc in [c for c in notA1A9 if choose_notA1A9[c] == 1]))
 		# calculate ideal value of happiness of A9 courses(if collide with notA1A9, value = 0, not consider about collision between A1A9)
 	   	+ quicksum(prob_A9[i] * choose_A9[c, i] * happiness[c] for c in A9 for i in range(len(A9)) if all(start[c] >= end[cc] or end[c] <= start[cc] for cc in [c for c in notA1A9 if choose_notA1A9[c] == 1]))
+		# subtract the ideal value that add twice(A1 collide with A9)
+		- quicksum(prob_A1[i] * choose_A1[cA1, i] * prob_A9[j] * choose_A9[cA9, j] * min(happiness[cA9], happiness[cA1]) for cA1 in collide[0] for cA9s in collide[1] for cA9 in cA9s for i in range(len(A1)) for j in range(len(A9)))
 		,GRB.MAXIMIZE)
 # avoid collision on required and elective courses
 for t in range(total_t):
