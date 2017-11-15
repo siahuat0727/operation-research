@@ -43,10 +43,7 @@ A9 = [c for c in course if front[c] == 'A9']
 notA1A9 = [c for c in course if front[c] != 'A1' and front[c] != 'A9']
 collide = [[],[]]
 for cA1 in A1:
-	collideA9 = []
-	for cA9 in A9:
-		if start[cA1] >= end[cA9] or end[cA1] <= start[cA9] == False: # TODO check youXianQuan
-			collideA9.append(cA9)
+	collideA9 = [cA9 for cA9 in A9 if start[cA1] > end[cA9] or end[cA1] < start[cA9] == False] # TODO check youXianQuan
 	if collideA9: # if len(collideA9) > 0
 		collide[0].append(cA1)
 		collide[1].append(collideA9)
@@ -65,33 +62,30 @@ prob_A1 = [p_A1 * ((1-p_A1)**i) for i in range(len(A1))]
 p_A9 = 0.5
 prob_A9 = [p_A9 * ((1-p_A9)**i) for i in range(len(A9))]
 
-# for cA1 in collide[0]:
-# 	for cA9s in collide[1]:
-# 		for cA9 in cA9s:
-# 			for i in 
-
 m.setObjective(
 		# calculate happiness of required and elective courses
 		quicksum(happiness[c] * choose_notA1A9[c] for c in notA1A9)
 		# calculate ideal value of happiness of A1 courses(if collide with notA1A9, value = 0, not consider about collision between A1A9)
-	   	+ quicksum(prob_A1[i] * choose_A1[c, i] * happiness[c] for c in A1 for i in range(len(A1)) if all(start[c] >= end[cc] or end[c] <= start[cc] for cc in [c for c in notA1A9 if choose_notA1A9[c] == 1]))
+	   	+ quicksum(prob_A1[i] * choose_A1[c, i] * happiness[c] for c in A1 for i in range(len(A1)) if all(start[c] > end[cc] or end[c] < start[cc] for cc in [c for c in notA1A9 if choose_notA1A9[c] == 1]))
 		# calculate ideal value of happiness of A9 courses(if collide with notA1A9, value = 0, not consider about collision between A1A9)
-	   	+ quicksum(prob_A9[i] * choose_A9[c, i] * happiness[c] for c in A9 for i in range(len(A9)) if all(start[c] >= end[cc] or end[c] <= start[cc] for cc in [c for c in notA1A9 if choose_notA1A9[c] == 1]))
+	   	+ quicksum(prob_A9[i] * choose_A9[c, i] * happiness[c] for c in A9 for i in range(len(A9)) if all(start[c] > end[cc] or end[c] < start[cc] for cc in [c for c in notA1A9 if choose_notA1A9[c] == 1]))
 		# subtract the ideal value that add twice(A1 collide with A9)
 		- quicksum(prob_A1[i] * choose_A1[cA1, i] * prob_A9[j] * choose_A9[cA9, j] * min(happiness[cA9], happiness[cA1]) for cA1 in collide[0] for cA9s in collide[1] for cA9 in cA9s for i in range(len(A1)) for j in range(len(A9)))
 		,GRB.MAXIMIZE)
-# avoid collision on required and elective courses
-for t in range(total_t):
-	m.addConstr(quicksum(choose_notA1A9[c] for c in notA1A9 if start[c] <= t < end[c]) <= 1)
 
-# each order has exactly one A1 course 
+# avoid collision on required and elective courses
+for t in range(total_t): # avoid more than one courses at [t, t+1)
+	m.addConstr(quicksum(choose_notA1A9[c] for c in notA1A9 if start[c] <= t <= end[c]) <= 1)
+# TODO bixiu zhuang xuanxiu 
+
+# 課課有序選
 m.addConstrs(choose_A1.sum('*', i) == 1 for i in range(len(A1)))
-# each A1 course must be filled in exactly one order
+# 序序有課填
 m.addConstrs(choose_A1.sum(c, '*') == 1 for c in A1)
 		
-# each order has exactly one A9 course 
+# 課課有序選
 m.addConstrs(choose_A9.sum('*', i) == 1 for i in range(len(A9)))
-# each A9 course must be filled in exactly one order
+# 序序有課填
 m.addConstrs(choose_A9.sum(c, '*') == 1 for c in A9)
 		
 m.optimize()

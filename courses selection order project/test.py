@@ -1,6 +1,9 @@
-def outer():  
-	def inner():  
-		print('Inside inner')
-	return inner # 1  
+from gurobipy import *
 
-foo = outer()()
+c = [2, 3]
+d = [1, 0]
+
+print(sum(c[i]*d[i] for i in range(2)))
+print(quicksum(c[i] for i in range(2) if d[i] == 1))
+
+
