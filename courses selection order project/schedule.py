@@ -1,11 +1,7 @@
 import itertools
 from gurobipy import *
 import matplotlib.pyplot as plt
-
-def plot_schedule(course,day,start,end,happiness,front):
-	fig = plt.figure(figsize=(10, 5.89))
-		
-
+from matplotlib.patches import Rectangle
 
 # course,day,start,end,happiness,front=multidict({
 # 		('compiler'):[5,2,4,5,'R'],
@@ -24,14 +20,12 @@ def plot_schedule(course,day,start,end,happiness,front):
 # 		})
 
 course,day,start,end,happiness,front=multidict({
-		('compiler'):[5,2,4,5,'R'],
-		('programming_language'):[1,5,7,5,'E'],
-		('japan4178B'):[1,7,8,1,'A1'],
-		('japan4178C'):[1,7,8,2,'A1'],
-		('japan4234A'):[2,3,4,3,'A1'],
-		('japan4278A'):[2,7,8,4,'A1'],
-		('japan4356B'):[5,2,4,5,'A1'],
-		('tongshi278'):[2,7,8,5,'A9'],
+		('JapaneseA'):[1,7,8,8,'A1'],
+		('JapaneseB'):[2,3,4,6,'A1'],
+		('JapaneseC'):[2,7,8,4,'A1'],
+		('GeneralEducationA'):[1,7,8,20,'A9'],
+		('GeneralEducationB'):[2,7,8,5,'A9'],
+		('GeneralEducationC'):[5,7,8,2,'A9'],
 		})
 
 # total period of one day
@@ -48,16 +42,21 @@ A9 = [c for c in course if front[c] == 'A9']
 RE = [c for c in course if front[c] != 'A1' and front[c] != 'A9']
 collide = [[],[]]
 for cA1 in A1:
-	collideA9 = [cA9 for cA9 in A9 if start[cA1] > end[cA9] or end[cA1] < start[cA9] == False] # TODO check youXianQuan
+	collideA9 = [cA9 for cA9 in A9 if (start[cA1] > end[cA9] or end[cA1] < start[cA9]) == False] # TODO check youXianQuan
 	if collideA9: # if len(collideA9) > 0
 		collide[0].append(cA1)
 		collide[1].append(collideA9)
+print("colide:")
+print(collide)
 
 m = Model("course_schedule")
 
 choose_RE = m.addVars(RE, vtype=GRB.BINARY, name="choose_RE")
 choose_A1 = m.addVars(A1, len(A1), vtype=GRB.BINARY, name="choose_A1")
 choose_A9 = m.addVars(A9, len(A9), vtype=GRB.BINARY, name="choose_A9")
+
+choose_collide = m.addVars(A1, len(A1), A9, len(A9), vtype=GRB.CONTINUOUS, name="choose_collide")
+over_add  = m.addVar(vtype=GRB.CONTINUOUS, name="over_add")
 
 m.update()
 
@@ -75,7 +74,8 @@ m.setObjective(
 		# calculate ideal value of happiness of A9 courses(if collide with RE, value = 0, not consider about collision between A1A9)
 	   	+ quicksum(prob_A9[i] * choose_A9[c, i] * happiness[c] for c in A9 for i in range(len(A9)) if all(start[c] > end[cc] or end[c] < start[cc] for cc in [c for c in RE if choose_RE[c] == 1]))
 		# subtract the ideal value that added twice(A1 collide with A9)
-		- quicksum(prob_A1[i] * choose_A1[cA1, i] * prob_A9[j] * choose_A9[cA9, j] * min(happiness[cA9], happiness[cA1]) for cA1 in collide[0] for cA9s in collide[1] for cA9 in cA9s for i in range(len(A1)) for j in range(len(A9)))
+		- quicksum(prob_A1[i] * choose_A1[cA1, i] * prob_A9[j] * choose_A9[cA9, j] * min(happiness[cA9], happiness[cA1]) for cA1, cA9s in zip(collide[0], collide[1]) for cA9 in cA9s for i in range(len(A1)) for j in range(len(A9)))
+		# - over_add
 		,GRB.MAXIMIZE)
 
 m.addConstrs(choose_RE[c] == 1 for c in RE if front[c] == 'R')
@@ -84,20 +84,38 @@ m.addConstrs(choose_RE[c] == 1 for c in RE if front[c] == 'R')
 m.addConstrs(quicksum(choose_RE[c] for c in RE if start[c] <= t <= end[c]) <= 1 for t in range(total_t)) # avoid more than one courses at [t, t+1)
 # TODO bixiu zhuang xuanxiu 
 
-# 課課有序選
-m.addConstrs(choose_A1.sum('*', i) == 1 for i in range(len(A1)))
 # 序序有課填
 m.addConstrs(choose_A1.sum(c, '*') == 1 for c in A1)
-		
 # 課課有序選
-m.addConstrs(choose_A9.sum('*', i) == 1 for i in range(len(A9)))
+m.addConstrs(choose_A1.sum('*', i) == 1 for i in range(len(A1)))
+		
 # 序序有課填
 m.addConstrs(choose_A9.sum(c, '*') == 1 for c in A9)
+# 課課有序選
+m.addConstrs(choose_A9.sum('*', i) == 1 for i in range(len(A9)))
 		
+# m.addConstr(over_add == quicksum(prob_A1[i] * choose_A1[cA1, i] * prob_A9[j] * choose_A9[cA9, j] * min_(happiness[cA9], happiness[cA1]) for cA1 in collide[0] for cA9s in collide[1] for cA9 in cA9s for i in range(len(A1)) for j in range(len(A9))))
+m.addConstr(over_add == quicksum(prob_A1[i] * choose_A1[cA1, i] * prob_A9[j] * choose_A9[cA9, j] * min(happiness[cA9], happiness[cA1]) for cA1 , cA9s in zip(collide[0], collide[1]) for cA9 in cA9s for i in range(len(A1)) for j in range(len(A9))) , name="c_over_add")
+
+'''
+# m.addGenConstrsMin(over_add, [choose_RE['compiler'], choose_RE['programming_language']], name="bla")
+m.addConstr(choose_collide['JapaneseA', 1, 'GeneralEducationA', 1] == prob_A1[1]*choose_A1['JapaneseA', 1]*prob_A9[1]*choose_A9['GeneralEducationA', 1]*min(happiness['JapaneseA'], happiness['GeneralEducationA']))
+m.addConstrs(choose_collide[cA1][i][cA9][j] == 
+		prob_A1[i] * choose_A1[cA1, i] *
+	   	prob_A9[j] * choose_A9[cA9, j] *
+	   	min(happiness[cA9], happiness[cA1]) 
+		for cA1 in collide[0] 
+		for cA9s in collide[1] 
+		for cA9 in cA9s 
+		for i in range(len(A1)) 
+		for j in range(len(A9)))
+'''
+
+# m.addConstrs(over_add == min_(choose_RE['compiler'], choose_RE['programming_language']))
+
 m.optimize()
 
 m.write("course_schedule.lp")
-
 sol_RE = m.getAttr('x', choose_RE)
 print("choose_RE:")
 print(sol_RE)
@@ -112,17 +130,33 @@ for i, c in itertools.product(range(len(A9)), A9):
 
 print("happiness value: %g"%m.objVal)
 
+for c in course:
+	start[c] %= one_t
+	end[c] %= one_t
+
 xingQi = ['Monday', 'Tuseday', 'Wednesday', 'Thusday', 'Friday']
-colors = ['pink', 'lightgreen', 'lightblue', 'wheat', 'salmon']
+# colors = ['pink', 'lightgreen', 'lightblue', 'wheat', 'salmon']
+colors = {'R':'lightblue', 'E':'lightgreen', 'A1':'salmon', 'A9':'wheat'}
 times = {x:x+7 if x <= 4 else x+8 for x in range(1, 1+one_t, 1)}
 print(times)
 
 fig = plt.figure(figsize=(10, 10))
+'''	
 for c in RE:
 	if(sol_RE[c] == True):
-		plt.fill_between([day[c]-0.5, day[c]+0.5], [times[start[c]%one_t], times[start[c]%one_t]], [times[end[c]%one_t], times[end[c]%one_t]], color=colors[int(day[c]-1)], edgecolor='k', linewidth=0.5)
-		plt.text(day[c], (times[start[c]%one_t]+times[end[c]%one_t])/2, c, ha='center', va='center', fontsize=8)
-	
+		plt.fill_between([day[c]-0.5, day[c]+0.5], [times[start[c]], times[start[c]]], [times[end[c]]+1, times[end[c]]+1], color=colors[front[c]], edgecolor='k', linewidth=0.5)
+		plt.text(day[c], (times[start[c]]+times[end[c]]+1)/2, c, ha='center', va='bottom', fontsize=8)
+'''	
+
+for i, c in itertools.product(range(len(A1)), A1):
+	if sol_A1[c, i] == 1:
+		plt.gca().add_patch(Rectangle((day[c]-0.5, times[start[c]]), 1, end[c]-start[c]+1, fill=None, alpha=1))
+		plt.text(day[c], times[start[c]]+0.1, '{}\norder:{}  p:{:.1%}  hp:{}\nideal hp:{:.4f}'.format(c,i+1,prob_A1[i], happiness[c], prob_A1[i]*happiness[c]), ha='center', va='top', fontsize=8)
+
+for i, c in itertools.product(range(len(A9)), A9):
+	if sol_A9[c, i] == 1:
+		plt.gca().add_patch(Rectangle((day[c]-0.5, times[start[c]]), 1, end[c]-start[c]+1, fill=None, alpha=1))
+		plt.text(day[c], times[end[c]]+0.9, '{}\norder:{}  p:{:.1%}  hp:{}\nideal hp:{:.4f}'.format(c,i+1,prob_A9[i], happiness[c], prob_A9[i]*happiness[c]), ha='center', va='bottom', fontsize=8)
 
 ax = fig.add_subplot(111)
 # ax.yaxis.grid()
@@ -130,7 +164,7 @@ ax.set_xlim(0.5, 5.5)
 ax.set_ylim(20, 8)
 ax.set_xticks(range(1, 6, 1))
 ax.set_xticklabels(xingQi)
-# ax.set_yticklabels(times.keys())
+ax.set_xlabel('\nIdeal value of happiness:  {:.3f}'.format(m.objVal), fontsize=15)
 
 ax2 = ax.twiny().twinx()
 ax2.set_xlim(ax.get_xlim())
